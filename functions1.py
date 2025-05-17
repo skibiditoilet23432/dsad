@@ -323,41 +323,36 @@ async def summary_and_cleanup(update, context, server_name):
         average_difference = round(total_difference / len(differences), 2) 
 
         if language == 'vi':
-    summary_message = (
-        "<b>┏━━━━━━━━━━━━━━━💠━━━━━━━━━━━━━━━┓</b>\n"
-        f"<b> 📊 THỐNG KÊ MÁY CHỦ: </b><code>{server_name}</code>\n"
-        "<b>┗━━━━━━━━━━━━━━━💠━━━━━━━━━━━━━━━┛</b>\n\n"
+            summary_message = (
+                f"<b>┏━━━━━━━━━━━━━━━💠━━━━━━━━━━━━━━━┓</b>\n"
+                f"<b> 📊 THỐNG KÊ MÁY CHỦ: </b><code>{server_name}</code>\n"
+                f"<b>┗━━━━━━━━━━━━━━━💠━━━━━━━━━━━━━━━┛</b>\n\n"
+                f"🔹 <b>Tổng Requests:</b>  <code>{total_difference:,}</code>\n"
+                f"🔸 <b>Cao Nhất Requests/s:</b> <code>{max_difference:,}</code>\n"
+                f"🔹 <b>Trung Bình Requests/s:</b> <code>{round(average_difference):,}</code>\n\n"   
+                f"🕒 <i>Thời gian:</i> <code>{now}</code>\n"
+                f"👤 <i>Người dùng:</i> <a href='{user_url}'>🦄 {full_name}</a>\n\n"
         
-        f"🔹 <b>Tổng Requests:</b>  <code>{total_difference:,}</code>\n"
-        f"🔸 <b>Cao Nhất Requests/s:</b> <code>{max_difference:,}</code>\n"
-        f"🔹 <b>Trung Bình Requests/s:</b> <code>{round(average_difference):,}</code>\n\n"
-        
-        f"🕒 <i>Thời gian:</i> <code>{now}</code>\n"
-        f"👤 <i>Người dùng:</i> <a href='{user_url}'>🦄 {full_name}</a>\n\n"
-        
-        "<b>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-        "  ✨ <i>Dữ liệu được phân tích tự động</i> ✨\n"
-        "<b>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</b>"
-    )
-else:
-    summary_message = (
-        "<b>┏━━━━━━━━━━━━━━━💠━━━━━━━━━━━━━━━┓</b>\n"
-        f"<b> 📊 SERVER STATISTICS: </b><code>{server_name}</code>\n"
-        "<b>┗━━━━━━━━━━━━━━━💠━━━━━━━━━━━━━━━┛</b>\n\n"
-        
-        f"🔹 <b>Total Requests:</b>  <code>{total_difference:,}</code>\n"
-        f"🔸 <b>Peak Requests/s:</b>  <code>{max_difference:,}</code>\n"
-        f"🔹 <b>Avg Requests/s:</b>  <code>{round(average_difference):,}</code>\n\n"
-        
-        f"🕒 <i>Timestamp:</i> <code>{now}</code>\n"
-        f"👤 <i>User:</i> <a href='{user_url}'>🦄 {full_name}</a>\n\n"
-        
-        "<b>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-        "  ✨ <i>Auto-analyzed statistics</i> ✨\n"
-        "<b>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</b>"
-    )
-
-
+                f"<b>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
+                f"  ✨ <i>Dữ liệu được phân tích tự động</i> ✨\n"
+                f"<b>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</b>"
+            )
+        else:
+            summary_message = (
+                "<code>"
+                f"<b>┏━━━━━━━━━━━━━━━💠━━━━━━━━━━━━━━━┓</b>\n"
+                f"<b> 📊 SERVER STATISTICS: </b><code>{server_name}</code>\n"
+                f"<b>┗━━━━━━━━━━━━━━━💠━━━━━━━━━━━━━━━┛</b>\n\n"
+                f"🔹 <b>Total Requests:</b>  <code>{total_difference:,}</code>\n"
+                f"🔸 <b>Peak Requests/s:</b>  <code>{max_difference:,}</code>\n"
+                f"🔹 <b>Avg Requests/s:</b>  <code>{round(average_difference):,}</code>\n\n"
+                f"🕒 <i>Timestamp:</i> <code>{now}</code>\n"
+                f"👤 <i>User:</i> <a href='{user_url}'>🦄 {full_name}</a>\n\n"
+                
+                f"<b>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
+                f"  ✨ <i>Auto-analyzed statistics</i> ✨\n"
+                f"<b>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</b>"
+            )
 
 
         full_name = update.callback_query.from_user.full_name
@@ -486,5 +481,7 @@ async def summary_and_cleanup_l4(update, context, server_name):
 
 
     os.remove(f"{user_id}_graph_l4.png")
+
+
 
 
