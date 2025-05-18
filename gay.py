@@ -390,48 +390,72 @@ async def handle_stats_clf(update: Update, context: ContextTypes.DEFAULT_TYPE, s
             blocked_requests = sum(event['count'] for event in events if event['dimensions']['action'] != "skip" and "bypassed" not in event['dimensions']['action'] and event['dimensions']['originResponseStatus'] == 0 and "solved" not in event['dimensions']['action'])
             total_count = allowed_requests + bypassed_requests + blocked_requests
 
+            f"<pre>"
+            f"╔════════════════════════════════════╗\n"
             count_text = f"<pre>🔰 𝗔𝘁𝘁𝗮𝗰𝗸 𝗥𝗲𝗽𝗼𝗿𝘁 𝗳𝗼𝗿: {server_info['name']} 🔰\n\n"
+            f"╠════════════════════════════════════╣\n"
+            count_text += f"🦄 Total Count:\n\n"
+            count_text += f" All Request\n ➥ {format_number(total_count)}\n\n"
+            count_text += f" Request Successful\n ➥ {format_number(allowed_requests + bypassed_requests)}  ({format_percentage(allowed_requests + bypassed_requests, total_count)})\n\n"
+            count_text += f" Request Blocked\n ➥ {format_number(blocked_requests)}  ({format_percentage(blocked_requests, total_count)})\n"
+            count_text += "➖➖➖➖➖➖➖\n\n"
 
-            count_text += f"📊 𝗧𝗼𝘁𝗮𝗹 𝗦𝘂𝗺𝗺𝗮𝗿𝘆\n"
-            count_text += f" ├─ 🌐 All Requests .......... {format_number(total_count)}\n"
-            count_text += f" ├─ ✅ Success ............... {format_number(allowed_requests + bypassed_requests)} ({format_percentage(allowed_requests + bypassed_requests, total_count)})\n"
-            count_text += f" └─ 🚫 Blocked ............... {format_number(blocked_requests)} ({format_percentage(blocked_requests, total_count)})\n\n"
-
-            count_text += f"🔓 𝗔𝗹𝗹𝗼𝘄𝗲𝗱 𝗥𝗲𝗾𝘂𝗲𝘀𝘁𝘀\n"
+            count_text += f"🔫 Allowed Request:\n"
+            count_text += "➖➖➖➖➖➖➖\n"
+            protocols = {}
+            for event in events2:
+                protocol = event['dimensions']['clientRequestHTTPProtocol']
+                origin_status = event['dimensions']['originResponseStatus']
+                protocols[(protocol, origin_status)] = protocols.get((protocol, origin_status), 0) + event['count']
             for (protocol, origin_status), count in protocols.items():
-            count_text += f" ├─ 🌐 Protocol: {protocol} | Status: {origin_status} | Count: {format_number(count)}\n"
-            count_text += f" └─ 📦 Total: {format_number(allowed_requests)} | Rate: {format_percentage(allowed_requests, total_count)}\n\n"
+                count_text += f" ➥ HTTP Protocol: {protocol}\n ➥ HTTP ResponseStatus: {origin_status}\n ➥ Count: {format_number(count)}\n"
+                count_text += "➖➖➖➖➖➖➖\n"
+            count_text += f" ➥ Count: {format_number(allowed_requests)}\n"
+            count_text += f" ➥ Percentage: {format_percentage(allowed_requests, total_count)}\n"
+            count_text += "➖➖➖➖➖➖➖\n\n"
 
-            count_text += f"🛸 𝗕𝘆𝗽𝗮𝘀𝘀𝗲𝗱 𝗥𝗲𝗾𝘂𝗲𝘀𝘁𝘀\n"
+            count_text += "🚁 Bypassed Request:\n"
+            count_text += "➖➖➖➖➖➖➖\n"
             for event in events:
-            if "bypassed" in event['dimensions']['action'] and event['dimensions']['originResponseStatus'] != 0:
-            count_text += f" ├─ 🔁 Count: {format_number(event['count'])}\n"
-            count_text += f" │   🧩 Action: {translate_action(event['dimensions']['action'])}\n"
-            count_text += f" │   📡 Method: {event['dimensions']['clientRequestHTTPMethodName']}\n"
-            count_text += f" │   🌐 Protocol: {event['dimensions']['clientRequestHTTPProtocol']}\n"
-            count_text += f" │   📬 Status: {event['dimensions']['originResponseStatus']}\n"
-            count_text += f" │   🧠 Rule: {translate_source(event['dimensions']['source'])}\n"
-            count_text += f" └─ 📦 Total: {format_number(bypassed_requests)} | Rate: {format_percentage(bypassed_requests, total_count)}\n\n"
+                if "bypassed" in event['dimensions']['action'] and event['dimensions']['originResponseStatus'] != 0:
+                    count_text += f" ➥ Count: {format_number(event['count'])}\n"
+                    count_text += f" ➥ Action: {translate_action(event['dimensions']['action'])}\n"
+                    count_text += f" ➥ RequestHTTPMethod: {event['dimensions']['clientRequestHTTPMethodName']}\n"
+                    count_text += f" ➥ RequestHTTPProtocol: {event['dimensions']['clientRequestHTTPProtocol']}\n"
+                    count_text += f" ➥ ResponseStatus: {event['dimensions']['originResponseStatus']}\n"
+                    count_text += f" ➥ Trigger Rules: {translate_source(event['dimensions']['source'])}\n"
+                    count_text += "➖➖➖➖➖➖➖\n"
+            count_text += f" ➥ Count: {format_number(bypassed_requests)}\n"
+            count_text += f" ➥ Percentage: {format_percentage(bypassed_requests, total_count)}\n"
+            count_text += "➖➖➖➖➖➖➖\n\n"
 
-            count_text += f"🛡 𝗕𝗹𝗼𝗰𝗸𝗲𝗱 𝗥𝗲𝗾𝘂𝗲𝘀𝘁𝘀\n"
+            count_text += f"🛡 Blocked Request:\n"
+            count_text += "➖➖➖➖➖➖➖\n"
             for event in events:
-            if event['dimensions']['action'] != "skip" and "bypassed" not in event['dimensions']['action'] and event['dimensions']['originResponseStatus'] == 0 and "solved" not in event['dimensions']['action']:
-            count_text += f" ├─ ❌ Count: {format_number(event['count'])}\n"
-            count_text += f" │   🧩 Action: {translate_action(event['dimensions']['action'])}\n"
-            count_text += f" │   📡 Method: {event['dimensions']['clientRequestHTTPMethodName']}\n"
-            count_text += f" │   🌐 Protocol: {event['dimensions']['clientRequestHTTPProtocol']}\n"
-            count_text += f" │   📬 Status: {event['dimensions']['edgeResponseStatus']}\n"
-            count_text += f" │   🧠 Rule: {translate_source(event['dimensions']['source'])}\n"
-            if event['dimensions']['source'] in ["l7ddos", "firewallManaged"]:
-            count_text += f" │   🧨 Vector: {get_description(event['dimensions'].get('ruleId', 'N/A'))}\n"
-            count_text += f" └─ 📦 Total: {format_number(blocked_requests)} | Rate: {format_percentage(blocked_requests, total_count)}\n"
+                if event['dimensions']['action'] != "skip" and "bypassed" not in event['dimensions']['action'] and event['dimensions']['originResponseStatus'] == 0 and "solved" not in event['dimensions']['action']:
+                    count_text += f" ➥ Count: {format_number(event['count'])}\n"
+                    count_text += f" ➥ Action: {translate_action(event['dimensions']['action'])}\n"
+                    count_text += f" ➥ RequestHTTPMethod: {event['dimensions']['clientRequestHTTPMethodName']}\n"
+                    count_text += f" ➥ RequestHTTPProtocol: {event['dimensions']['clientRequestHTTPProtocol']}\n"
+                    count_text += f" ➥ ResponseStatus: {event['dimensions']['edgeResponseStatus']}\n"
+                    count_text += f" ➥ Trigger Rules: {translate_source(event['dimensions']['source'])}\n"
+                    if event['dimensions']['source'] == "l7ddos":
+                        count_text += f" ➥ Vector: {get_description(event['dimensions'].get('ruleId', 'N/A'))}\n"
+                    if event['dimensions']['source'] == "firewallManaged":
+                    	count_text += f" ➥ Vector: {get_description(event['dimensions'].get('ruleId', 'N/A'))}\n"
+                    count_text += "➖➖➖➖➖➖➖\n"
+            count_text += f"\n ➥ Count: {format_number(blocked_requests)}\n"
+            count_text += f" ➥ Percentage: {format_percentage(blocked_requests, total_count)}\n"
+            count_text += "➖➖➖➖➖➖➖\n\n"
 
-            count_text += "</pre>\n"
+            count_text += "</pre>\n\n"
 
-            if remaining_time > 5:
-            count_text += f"⏰ <b>Time Remaining:</b> <code>{remaining_time} seconds</code>\n\n"
+            count_text += f"⏰ Time Remaining: {remaining_time} seconds\n"
 
-            count_text += f"👤 <b>Reported by:</b> <a href='https://t.me/{user_name}'>{full_name}</a>\n"
+            if remaining_time <= 5:
+                count_text = count_text.replace(f"⏰ Time Remaining: {remaining_time} seconds\n", "")
+
+            count_text += f"🚗 Data from user: <a href='https://t.me/{user_name}'> {full_name}</a> 🚗\n"
 
             await context.bot.edit_message_text(
                 chat_id=chat_id,
