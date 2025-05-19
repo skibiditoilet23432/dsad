@@ -361,6 +361,7 @@ async def handle_stats_captcha(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def handle_stats_clf(update: Update, context: ContextTypes.DEFAULT_TYPE, server_info, path):
+    import asyncio
     from collections import defaultdict
     from datetime import datetime
 
@@ -378,11 +379,7 @@ async def handle_stats_clf(update: Update, context: ContextTypes.DEFAULT_TYPE, s
         if language == "vi" else
         f"🎬 <b>Start Recording Attack For {server_info['name']} by @{user_name}</b>"
     )
-    message = await context.bot.send_message(
-        chat_id=chat_id,
-        text=title,
-        parse_mode="HTML"
-    )
+    message = await context.bot.send_message(chat_id=chat_id, text=title, parse_mode="HTML")
 
     # Timing setup
     start_time = datetime.utcnow()
@@ -399,15 +396,15 @@ async def handle_stats_clf(update: Update, context: ContextTypes.DEFAULT_TYPE, s
             allowed_events, _ = await fetch_passdata(update, user_id, server_info, start_time, current_time, path)
 
             # Aggregate counts
-            allowed_requests = sum(evt['count'] for evt in allowed_events)
-            bypassed_requests = sum(evt['count'] for evt in blocked_events if 'bypassed' in evt['dimensions']['action'])
+            allowed_requests = sum(evt.get('count', 1) for evt in allowed_events)
+            bypassed_requests = sum(evt.get('count', 1) for evt in blocked_events if 'bypassed' in (evt.get('action') or ''))
             blocked_requests = sum(
-                evt['count']
+                evt.get('count', 1)
                 for evt in blocked_events
-                if evt['dimensions']['action'] != 'skip'
-                and 'bypassed' not in evt['dimensions']['action']
-                and evt['dimensions']['originResponseStatus'] == 0
-                and 'solved' not in evt['dimensions']['action']
+                if evt.get('action') not in (None, 'skip')
+                and 'bypassed' not in (evt.get('action') or '')
+                and evt.get('originResponseStatus') == 0
+                and 'solved' not in (evt.get('action') or '')
             )
             total_count = allowed_requests + bypassed_requests + blocked_requests
 
@@ -425,20 +422,20 @@ async def handle_stats_clf(update: Update, context: ContextTypes.DEFAULT_TYPE, s
             # Detailed blocked events
             count_text += "🛡️ Blocked Details:\n"
             for evt in blocked_events:
-                dims = evt['dimensions']
-                action = dims['action']
-                if action == 'skip' or 'bypassed' in action or dims['originResponseStatus'] != 0 or 'solved' in action:
+                action = evt.get('action')
+                if action in (None, 'skip') or 'bypassed' in action or evt.get('originResponseStatus') != 0 or 'solved' in action:
                     continue
+                # use evt directly since no 'dimensions'
                 count_text += (
-                    f"• Time: {evt['timestamp'] if 'timestamp' in evt else evt.get('datetime', '')}\n"
-                    f"  - Rule: {dims.get('ruleId','N/A')} ({dims.get('ruleMessage','')})\n"
-                    f"  - Source: {translate_source(dims['source'])}\n"
+                    f"• Time: {evt.get('datetime','')}\n"
+                    f"  - Rule: {evt.get('ruleId','N/A')} ({evt.get('ruleMessage','N/A')})\n"
+                    f"  - Source: {translate_source(evt.get('source',''))}\n"
                     f"  - BotScore: {evt.get('botScore','-')}\n"
                     f"  - BotTags: {', '.join(evt.get('botDetectionTags', []))}\n"
-                    f"  - Client: {dims['clientIP']} | {dims['clientCountryName']} | ASN {dims['clientAsn']}\n"
-                    f"  - Method/Protocol: {dims['clientRequestHTTPMethodName']}/{dims['clientRequestHTTPProtocol']}\n"
-                    f"  - Path: {dims['clientRequestPath']}?{dims['clientRequestQuery']}\n"
-                    f"  - Status E/O: {dims['edgeResponseStatus']}/{dims['originResponseStatus']}\n"
+                    f"  - Client: {evt.get('clientIP','')} | {evt.get('clientCountryName','')} | ASN {evt.get('clientAsn','')}\n"
+                    f"  - Method/Protocol: {evt.get('clientRequestHTTPMethodName','')}/{evt.get('clientRequestHTTPProtocol','')}\n"
+                    f"  - Path: {evt.get('clientRequestPath','')}?{evt.get('clientRequestQuery','')}\n"
+                    f"  - Status E/O: {evt.get('edgeResponseStatus','')}/{evt.get('originResponseStatus','')}\n"
                 )
                 count_text += "│" + "─"*36 + "│\n"
 
@@ -446,9 +443,9 @@ async def handle_stats_clf(update: Update, context: ContextTypes.DEFAULT_TYPE, s
             count_text += "\n🔫 Allowed Details:\n"
             protocols = defaultdict(int)
             for evt in allowed_events:
-                dims = evt['dimensions']
-                key = (dims['clientRequestHTTPProtocol'], dims['originResponseStatus'])
-                protocols[key] += evt['count']
+                proto = evt.get('clientRequestHTTPProtocol','')
+                status = evt.get('originResponseStatus', '')
+                protocols[(proto, status)] += evt.get('count',1)
             for (proto, status), cnt in protocols.items():
                 count_text += (
                     f"• Protocol: {proto} | Status: {status} | Count: {format_number(cnt)}\n"
@@ -468,8 +465,7 @@ async def handle_stats_clf(update: Update, context: ContextTypes.DEFAULT_TYPE, s
             )
 
             # Sleep and decrement
-            loop_end = datetime.utcnow()
-            elapsed = (loop_end - loop_start_time).total_seconds()
+            elapsed = (datetime.utcnow() - loop_start_time).total_seconds()
             await asyncio.sleep(4)
             remaining_time -= int(elapsed) + 4
 
@@ -487,15 +483,14 @@ async def handle_stats_clf(update: Update, context: ContextTypes.DEFAULT_TYPE, s
         events3, _ = await fetch_statistics_pass(update, user_id, server_info, start_time, current_time, path, True)
 
         all_events = events + events2
-        total_pass = sum(evt['count'] for evt in events3)
+        total_pass = sum(evt.get('count',1) for evt in events3)
 
         # Summarize by country and ASN
         country_ip_counts = defaultdict(set)
         asn_counts = defaultdict(int)
         for evt in all_events:
-            dims = evt['dimensions']
-            country_ip_counts[dims['clientCountryName']].add(dims['clientIP'])
-            asn_counts[dims['clientAsn']] += evt['count']
+            country_ip_counts[evt.get('clientCountryName','')].add(evt.get('clientIP',''))
+            asn_counts[evt.get('clientAsn','')] += evt.get('count',1)
         top_countries = sorted(country_ip_counts.items(), key=lambda x: len(x[1]), reverse=True)[:10]
         top_asns = sorted(asn_counts.items(), key=lambda x: x[1], reverse=True)[:10]
 
@@ -504,7 +499,7 @@ async def handle_stats_clf(update: Update, context: ContextTypes.DEFAULT_TYPE, s
 
         source_counts = defaultdict(int)
         for evt in events:
-            source_counts[evt['dimensions']['source']] += evt['count']
+            source_counts[evt.get('source','')] += evt.get('count',1)
         source_summary = [f"{s}-{cnt}" for s, cnt in source_counts.items()]
         if total_pass > 0:
             source_summary.append(f"pass-{total_pass}")
