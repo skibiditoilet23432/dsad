@@ -361,27 +361,18 @@ async def handle_stats_captcha(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def handle_stats_clf(update: Update, context: ContextTypes.DEFAULT_TYPE, server_info, path):
-    import asyncio
-    from collections import defaultdict
-    from datetime import datetime
-
-    # Initialize user and chat info
     chat_id = update.effective_chat.id
-    user = update.callback_query.from_user
-    user_id = user.id
-    user_name = user.username
-    full_name = user.full_name
-    language = load_user_language(user_id)
+    user_name = update.callback_query.from_user.username
+    language = load_user_language(update.effective_user.id)
+    user_id = update.effective_user.id
+    full_name = update.callback_query.from_user.full_name
 
-    # Send start message
-    title = (
-        f"🎬 <b>Bắt Đầu Ghi Nhận Tấn Công Của {server_info['name']} bởi @{user_name}</b>"
-        if language == "vi" else
-        f"🎬 <b>Start Recording Attack For {server_info['name']} by @{user_name}</b>"
+    message = await context.bot.send_message(
+        chat_id=chat_id,
+        text=f"🎬 <b>Bắt Đầu Ghi Nhận Tấn Công Của {server_info['name']} bởi @{user_name}</b>" if language == "vi" else f"🎬 <b>Start Recording Attack For {server_info['name']} by @{user_name}</b>",
+        parse_mode="HTML"
     )
-    message = await context.bot.send_message(chat_id=chat_id, text=title, parse_mode="HTML")
 
-    # Timing setup
     start_time = datetime.utcnow()
     duration = 200
     remaining_time = duration
@@ -389,129 +380,144 @@ async def handle_stats_clf(update: Update, context: ContextTypes.DEFAULT_TYPE, s
     try:
         while remaining_time > 0:
             loop_start_time = datetime.utcnow()
+            
             current_time = datetime.utcnow()
+            events, counts = await fetch_clfdata(update, user_id, server_info, start_time, current_time, path)
+            events2, counts2 = await fetch_passdata(update, user_id, server_info, start_time, current_time, path)
 
-            # Fetch blocked and allowed events
-            blocked_events = await fetch_clfdata(update, user_id, server_info, start_time, current_time, path)
-            allowed_events, _ = await fetch_passdata(update, user_id, server_info, start_time, current_time, path)
-
-            # Aggregate counts
-            allowed_requests = sum(evt.get('count', 1) for evt in allowed_events)
-            bypassed_requests = sum(evt.get('count', 1) for evt in blocked_events if 'bypassed' in (evt.get('action') or ''))
-            blocked_requests = sum(
-                evt.get('count', 1)
-                for evt in blocked_events
-                if evt.get('action') not in (None, 'skip')
-                and 'bypassed' not in (evt.get('action') or '')
-                and evt.get('originResponseStatus') == 0
-                and 'solved' not in (evt.get('action') or '')
-            )
+            allowed_requests = sum(event['count'] for event in events2)
+            bypassed_requests = sum(event['count'] for event in events if "bypassed" in event['dimensions']['action'])
+            blocked_requests = sum(event['count'] for event in events if event['dimensions']['action'] != "skip" and "bypassed" not in event['dimensions']['action'] and event['dimensions']['originResponseStatus'] == 0 and "solved" not in event['dimensions']['action'])
             total_count = allowed_requests + bypassed_requests + blocked_requests
 
-            # Build report text
-            count_text = "<pre>"
-            count_text += f"🔰 Attack Report for: {server_info['name']} 🔰\n"
-            count_text += f"Total Requests: {format_number(total_count)}\n"
-            count_text += "╠" + "═"*36 + "╣\n"
+            count_text = f"<pre> 👑 {server_info['name']} 👑\n\n"
 
-            # Summary
-            count_text += f"✔️ Successful: {format_number(allowed_requests + bypassed_requests)} ({format_percentage(allowed_requests + bypassed_requests, total_count)})\n"
-            count_text += f"❌ Blocked: {format_number(blocked_requests)} ({format_percentage(blocked_requests, total_count)})\n"
-            count_text += "╠" + "═"*36 + "╣\n\n"
+            count_text += f"🦄 Total Count:\n\n"
+            count_text += f" All Request\n ➥ {format_number(total_count)}\n\n"
+            count_text += f" Request Successful\n ➥ {format_number(allowed_requests + bypassed_requests)}  ({format_percentage(allowed_requests + bypassed_requests, total_count)})\n\n"
+            count_text += f" Request Blocked\n ➥ {format_number(blocked_requests)}  ({format_percentage(blocked_requests, total_count)})\n"
+            count_text += "➖➖➖➖➖➖➖\n\n"
 
-            # Detailed blocked events
-            count_text += "🛡️ Blocked Details:\n"
-            for evt in blocked_events:
-                action = evt.get('action')
-                if action in (None, 'skip') or 'bypassed' in action or evt.get('originResponseStatus') != 0 or 'solved' in action:
-                    continue
-                # use evt directly since no 'dimensions'
-                count_text += (
-                    f"• Time: {evt.get('datetime','')}\n"
-                    f"  - Rule: {evt.get('ruleId','N/A')} ({evt.get('ruleMessage','N/A')})\n"
-                    f"  - Source: {translate_source(evt.get('source',''))}\n"
-                    f"  - BotScore: {evt.get('botScore','-')}\n"
-                    f"  - BotTags: {', '.join(evt.get('botDetectionTags', []))}\n"
-                    f"  - Client: {evt.get('clientIP','')} | {evt.get('clientCountryName','')} | ASN {evt.get('clientAsn','')}\n"
-                    f"  - Method/Protocol: {evt.get('clientRequestHTTPMethodName','')}/{evt.get('clientRequestHTTPProtocol','')}\n"
-                    f"  - Path: {evt.get('clientRequestPath','')}?{evt.get('clientRequestQuery','')}\n"
-                    f"  - Status E/O: {evt.get('edgeResponseStatus','')}/{evt.get('originResponseStatus','')}\n"
-                )
-                count_text += "│" + "─"*36 + "│\n"
+            count_text += f"🔫 Allowed Request:\n"
+            count_text += "➖➖➖➖➖➖➖\n"
+            protocols = {}
+            for event in events2:
+                protocol = event['dimensions']['clientRequestHTTPProtocol']
+                origin_status = event['dimensions']['originResponseStatus']
+                protocols[(protocol, origin_status)] = protocols.get((protocol, origin_status), 0) + event['count']
+            for (protocol, origin_status), count in protocols.items():
+                count_text += f" ➥ HTTP Protocol: {protocol}\n ➥ HTTP ResponseStatus: {origin_status}\n ➥ Count: {format_number(count)}\n"
+                count_text += "➖➖➖➖➖➖➖\n"
+            count_text += f" ➥ Count: {format_number(allowed_requests)}\n"
+            count_text += f" ➥ Percentage: {format_percentage(allowed_requests, total_count)}\n"
+            count_text += "➖➖➖➖➖➖➖\n\n"
 
-            # Detailed allowed events breakdown by protocol/status
-            count_text += "\n🔫 Allowed Details:\n"
-            protocols = defaultdict(int)
-            for evt in allowed_events:
-                proto = evt.get('clientRequestHTTPProtocol','')
-                status = evt.get('originResponseStatus', '')
-                protocols[(proto, status)] += evt.get('count',1)
-            for (proto, status), cnt in protocols.items():
-                count_text += (
-                    f"• Protocol: {proto} | Status: {status} | Count: {format_number(cnt)}\n"
-                )
-            count_text += "</pre>\n"
+            count_text += "🚁 Bypassed Request:\n"
+            count_text += "➖➖➖➖➖➖➖\n"
+            for event in events:
+                if "bypassed" in event['dimensions']['action'] and event['dimensions']['originResponseStatus'] != 0:
+                    count_text += f" ➥ Count: {format_number(event['count'])}\n"
+                    count_text += f" ➥ Action: {translate_action(event['dimensions']['action'])}\n"
+                    count_text += f" ➥ RequestHTTPMethod: {event['dimensions']['clientRequestHTTPMethodName']}\n"
+                    count_text += f" ➥ RequestHTTPProtocol: {event['dimensions']['clientRequestHTTPProtocol']}\n"
+                    count_text += f" ➥ ResponseStatus: {event['dimensions']['originResponseStatus']}\n"
+                    count_text += f" ➥ Trigger Rules: {translate_source(event['dimensions']['source'])}\n"
+                    count_text += "➖➖➖➖➖➖➖\n"
+            count_text += f" ➥ Count: {format_number(bypassed_requests)}\n"
+            count_text += f" ➥ Percentage: {format_percentage(bypassed_requests, total_count)}\n"
+            count_text += "➖➖➖➖➖➖➖\n\n"
 
-            # Time remaining and footer
-            count_text += f"⏰ Time Remaining: {remaining_time}s\n"
-            count_text += f"🚗 Data from: <a href='https://t.me/{user_name}'>{full_name}</a>\n"
+            count_text += f"🛡 Blocked Request:\n"
+            count_text += "➖➖➖➖➖➖➖\n"
+            for event in events:
+                if event['dimensions']['action'] != "skip" and "bypassed" not in event['dimensions']['action'] and event['dimensions']['originResponseStatus'] == 0 and "solved" not in event['dimensions']['action']:
+                    count_text += f" ➥ Count: {format_number(event['count'])}\n"
+                    count_text += f" ➥ Action: {translate_action(event['dimensions']['action'])}\n"
+                    count_text += f" ➥ RequestHTTPMethod: {event['dimensions']['clientRequestHTTPMethodName']}\n"
+                    count_text += f" ➥ RequestHTTPProtocol: {event['dimensions']['clientRequestHTTPProtocol']}\n"
+                    count_text += f" ➥ ResponseStatus: {event['dimensions']['edgeResponseStatus']}\n"
+                    count_text += f" ➥ Trigger Rules: {translate_source(event['dimensions']['source'])}\n"
+                    if event['dimensions']['source'] == "l7ddos":
+                        count_text += f" ➥ Vector: {get_description(event['dimensions'].get('ruleId', 'N/A'))}\n"
+                    if event['dimensions']['source'] == "firewallManaged":
+                    	count_text += f" ➥ Vector: {get_description(event['dimensions'].get('ruleId', 'N/A'))}\n"
+                    count_text += "➖➖➖➖➖➖➖\n"
+            count_text += f"\n ➥ Count: {format_number(blocked_requests)}\n"
+            count_text += f" ➥ Percentage: {format_percentage(blocked_requests, total_count)}\n"
+            count_text += "➖➖➖➖➖➖➖\n\n"
 
-            # Edit message
+            count_text += "</pre>\n\n"
+
+            count_text += f"⏰ Time Remaining: {remaining_time} seconds\n"
+
+            if remaining_time <= 5:
+                count_text = count_text.replace(f"⏰ Time Remaining: {remaining_time} seconds\n", "")
+
+            count_text += f"🚗 Data from user: <a href='https://t.me/{user_name}'> {full_name}</a> 🚗\n"
+
             await context.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message.message_id,
                 text=count_text,
                 parse_mode="HTML"
             )
+            loop_end_time = datetime.utcnow()
+            elapsed_time = round((loop_end_time - loop_start_time).total_seconds())
 
-            # Sleep and decrement
-            elapsed = (datetime.utcnow() - loop_start_time).total_seconds()
             await asyncio.sleep(4)
-            remaining_time -= int(elapsed) + 4
+            remaining_time -= elapsed_time + 4
 
+            
     except Exception as e:
         await context.bot.send_message(chat_id=chat_id, text=f"Error during statistics handling: {str(e)}")
     finally:
-        # Cleanup
         remove_running_server(user_id)
         await context.bot.delete_message(chat_id=chat_id, message_id=message.message_id)
-
-        # Final summary send
         current_time = datetime.utcnow()
         events = await fetch_statistics(update, user_id, server_info, start_time, current_time, path)
-        events2, _ = await fetch_statistics_pass(update, user_id, server_info, start_time, current_time, path, False)
+        events2, counts2 = await fetch_statistics_pass(update, user_id, server_info, start_time, current_time, path, False)
         events3, _ = await fetch_statistics_pass(update, user_id, server_info, start_time, current_time, path, True)
 
         all_events = events + events2
-        total_pass = sum(evt.get('count',1) for evt in events3)
-
-        # Summarize by country and ASN
-        country_ip_counts = defaultdict(set)
-        asn_counts = defaultdict(int)
-        for evt in all_events:
-            country_ip_counts[evt.get('clientCountryName','')].add(evt.get('clientIP',''))
-            asn_counts[evt.get('clientAsn','')] += evt.get('count',1)
-        top_countries = sorted(country_ip_counts.items(), key=lambda x: len(x[1]), reverse=True)[:10]
-        top_asns = sorted(asn_counts.items(), key=lambda x: x[1], reverse=True)[:10]
-
-        country_summary = [f"{c}-{len(ips)}" for c, ips in top_countries]
-        asn_summary = [f"{asn}-{cnt}" for asn, cnt in top_asns]
+        total_count_pass = sum(event['count'] for event in events3)
 
         source_counts = defaultdict(int)
-        for evt in events:
-            source_counts[evt.get('source','')] += evt.get('count',1)
-        source_summary = [f"{s}-{cnt}" for s, cnt in source_counts.items()]
-        if total_pass > 0:
-            source_summary.append(f"pass-{total_pass}")
+        for event in events:
+            source = event['dimensions']['source']
+            source_counts[source] += event['count']
 
-        # Send final messages and graphs
-        await context.bot.send_message(chat_id=chat_id, text=count_text, parse_mode='HTML')
-        await send_pre_graph_to_user(
-            update, context, chat_id, user_id,
-            server_info['name'], count_text,
-            country_summary, asn_summary, source_summary, total_pass
-        )
+        def summarize(events):
+            country_ip_counts = defaultdict(set)
+            asn_counts = defaultdict(int)
 
+            for event in events:
+                country = event['dimensions']['clientCountryName']
+                ip = event['dimensions']['clientIP']
+                asn = event['dimensions']['clientAsn']
+
+                country_ip_counts[country].add(ip)
+                asn_counts[asn] += event['count']
+
+            sorted_country_ip_counts = sorted(country_ip_counts.items(), key=lambda x: len(x[1]), reverse=True)[:10]
+            sorted_asn_counts = sorted(asn_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+
+            return sorted_country_ip_counts, sorted_asn_counts
+
+        country_ip_stats, asn_stats = summarize(all_events)
+        sorted_source_counts = sorted(source_counts.items(), key=lambda x: x[1], reverse=True)
+            
+        nation_summary = [f"{country_code}-{len(ips)}" for country_code, ips in country_ip_stats]
+        asn_summary = [f"{asn}-{count}" for asn, count in asn_stats]
+        source_summary = [f"{source}-{count}" for source, count in sorted_source_counts]
+
+        if total_count_pass > 0:
+            source_summary.append(f"pass-{total_count_pass}")
+
+        nation_summary_str = f"[{','.join(nation_summary)}]"
+        asn_summary_str = f"[{','.join(asn_summary)}]"
+        source_summary_str = f"[{','.join(source_summary)}]"
+        await context.bot.send_message(chat_id=chat_id, text=count_text,parse_mode='HTML')            
+        await send_pre_graph_to_user(update, context, chat_id, user_id, server_info['name'], count_text, nation_summary,asn_summary,source_summary,total_count_pass)
         
 async def handle_stats_l4(update: Update, context: ContextTypes.DEFAULT_TYPE, server_info):
   chat_id = update.effective_chat.id
